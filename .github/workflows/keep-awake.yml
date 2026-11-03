@@ -1,0 +1,34 @@
+# Keeps https://tmax-circus.onrender.com awake (Render free plan sleeps after 15 min) until 27 Dec 2026.
+# GitHub delays frequent schedules a lot, so one run stays alive ~5h50m pinging every 5 min,
+# then starts the next run itself. The hourly schedule only restarts the chain if it ever breaks.
+name: Keep site awake
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+permissions:
+  actions: write
+concurrency:
+  group: keep-awake
+  cancel-in-progress: false
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - name: Ping every 5 minutes
+        run: |
+          end=$(( $(date +%s) + 350*60 ))
+          while [ "$(date +%s)" -lt "$end" ]; do
+            today=$(TZ=Asia/Riyadh date +%Y%m%d)
+            if [ "$today" -gt 20261227 ]; then echo "Season over — stopping"; exit 0; fi
+            curl -fsS --max-time 90 --retry 2 https://tmax-circus.onrender.com/api/health && echo " $(date -u +%H:%M)" || echo "ping failed $(date -u +%H:%M)"
+            sleep 300
+          done
+      - name: Start the next run
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ "$(TZ=Asia/Riyadh date +%Y%m%d)" -gt 20261227 ] && exit 0
+          gh workflow run keep-awake.yml -R "$GITHUB_REPOSITORY" --ref "$GITHUB_REF_NAME"
